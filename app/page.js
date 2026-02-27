@@ -7,15 +7,15 @@ import ReactMarkdown from "react-markdown";
 export default function Home() {
   const [user, setUser] = useState(null);
   const [pdf, setPdf] = useState(null);
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [loading, setLoading] = useState(false);
   const [pdfName, setPdfName] = useState("");
+  const [question, setQuestion] = useState("");
   const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [cookbookReady, setCookbookReady] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         router.push("/login");
@@ -35,23 +35,52 @@ export default function Home() {
     if (file) {
       setPdf(file);
       setPdfName(file.name);
-      setAnswer("");
+      setCookbookReady(false);
       setConversations([]);
     }
   };
 
-  const handleAsk = async () => {
-    if (!pdf || !question.trim()) return;
-    setLoading(true);
+  const handleProcessPdf = async () => {
+    if (!pdf || !user) return;
+    setUploading(true);
 
     try {
       const formData = new FormData();
       formData.append("pdf", pdf);
-      formData.append("question", question);
+      formData.append("userId", user.id);
+      formData.append("cookbookName", pdfName);
 
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setCookbookReady(true);
+      } else {
+        alert("Error processing PDF: " + data.error);
+      }
+    } catch (err) {
+      alert("Something went wrong: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleAsk = async () => {
+    if (!question.trim() || !cookbookReady || !user) return;
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          userId: user.id,
+          cookbookName: pdfName,
+        }),
       });
 
       const data = await res.json();
@@ -60,16 +89,17 @@ export default function Home() {
       setQuestion("");
 
       // Save to Supabase
-      if (user) {
-        await supabase.from("conversations").insert({
-          user_id: user.id,
-          cookbook_id: null,
-          question: newConversation.question,
-          answer: newConversation.answer,
-        });
-      }
+      await supabase.from("conversations").insert({
+        user_id: user.id,
+        cookbook_id: null,
+        question: newConversation.question,
+        answer: newConversation.answer,
+      });
     } catch (err) {
-      setConversations((prev) => [...prev, { question, answer: "Something went wrong." }]);
+      setConversations((prev) => [
+        ...prev,
+        { question, answer: "Something went wrong." },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -105,8 +135,19 @@ export default function Home() {
             onChange={handlePdfUpload}
             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-amber-100 file:text-amber-800 file:font-semibold hover:file:bg-amber-200 cursor-pointer"
           />
-          {pdfName && (
-            <p className="mt-2 text-sm text-green-600">✅ {pdfName} uploaded!</p>
+          {pdf && !cookbookReady && (
+            <button
+              onClick={handleProcessPdf}
+              disabled={uploading}
+              className="mt-4 w-full bg-amber-800 hover:bg-amber-900 disabled:bg-amber-300 text-white font-bold py-3 px-6 rounded-xl transition-colors"
+            >
+              {uploading ? "Processing cookbook... this may take a minute 🔄" : "Process Cookbook 📚"}
+            </button>
+          )}
+          {cookbookReady && (
+            <p className="mt-3 text-green-600 font-semibold">
+              ✅ {pdfName} is ready — start asking questions!
+            </p>
           )}
         </div>
 
@@ -115,37 +156,43 @@ export default function Home() {
           <div className="bg-white rounded-2xl shadow-md p-6 mb-6 space-y-6">
             {conversations.map((conv, i) => (
               <div key={i}>
-                <p className="text-amber-800 font-semibold mb-1">🤔 {conv.question}</p>
-                <ReactMarkdown>
+                <p className="text-amber-800 font-semibold mb-1">
+                  🤔 {conv.question}
+                </p>
+                <ReactMarkdown >
                   {conv.answer}
                 </ReactMarkdown>
-                {i < conversations.length - 1 && <hr className="mt-4 border-amber-100" />}
+                {i < conversations.length - 1 && (
+                  <hr className="mt-4 border-amber-100" />
+                )}
               </div>
             ))}
           </div>
         )}
 
         {/* Question Input */}
-        <div className="bg-white rounded-2xl shadow-md p-6">
-          <label className="block text-amber-800 font-semibold mb-3">
-            🤔 What would you like to know?
-          </label>
-          <input
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAsk()}
-            placeholder="e.g. What can I make with chicken and spinach?"
-            className="w-full border border-amber-200 rounded-xl p-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-          />
-          <button
-            onClick={handleAsk}
-            disabled={!pdf || !question.trim() || loading}
-            className="mt-4 w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-200 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-          >
-            {loading ? "Cooking up an answer... 🍳" : "Ask the Chef!"}
-          </button>
-        </div>
+        {cookbookReady && (
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <label className="block text-amber-800 font-semibold mb-3">
+              🤔 What would you like to know?
+            </label>
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAsk()}
+              placeholder="e.g. What can I make with chicken and spinach?"
+              className="w-full border border-amber-200 rounded-xl p-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            <button
+              onClick={handleAsk}
+              disabled={!question.trim() || loading}
+              className="mt-4 w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-200 text-white font-bold py-3 px-6 rounded-xl transition-colors"
+            >
+              {loading ? "Cooking up an answer... 🍳" : "Ask the Chef!"}
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

@@ -1,36 +1,45 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import PDFParser from "pdf2json";
+import { createClient } from "@supabase/supabase-js";
+import { getEmbedding } from "@/lib/embeddings";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-function extractTextFromPDF(buffer) {
-  return new Promise((resolve, reject) => {
-    const pdfParser = new PDFParser();
-    pdfParser.on("pdfParser_dataReady", (pdfData) => {
-      const text = pdfData.Pages.map((page) =>
-        page.Texts.map((t) => decodeURIComponent(t.R[0].T)).join(" ")
-      ).join("\n");
-      resolve(text);
-    });
-    pdfParser.on("pdfParser_dataError", reject);
-    pdfParser.parseBuffer(buffer);
-  });
-}
-
 export async function POST(request) {
   try {
-    const formData = await request.formData();
-    const question = formData.get("question");
-    const pdfFile = formData.get("pdf");
+    const { question, userId, cookbookName } = await request.json();
 
-    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer());
-    const recipeText = await extractTextFromPDF(pdfBuffer);
+    // Get embedding for the question
+    const questionEmbedding = await getEmbedding(question);
 
+    // Search Supabase for most similar chunks
+    const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SECRET_KEY
+    );
+
+    const { data: relevantChunks, error } = await supabase.rpc(
+      "match_cookbook_chunks",
+      {
+        query_embedding: questionEmbedding,
+        match_user_id: userId,
+        match_cookbook_name: cookbookName,
+        match_count: 5,
+      }
+    );
+
+    if (error) throw error;
+
+    // Build context from relevant chunks
+    const context = relevantChunks
+      .map((chunk) => chunk.chunk_text)
+      .join("\n\n");
+
+    // Send to Gemini
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const prompt = `You are a helpful chef assistant. Using ONLY the recipes in the cookbook below, answer the user's question. If the answer isn't in the cookbook, say so.
 
-COOKBOOK CONTENT:
-${recipeText}
+RELEVANT COOKBOOK SECTIONS:
+${context}
 
 USER QUESTION:
 ${question}`;
@@ -40,6 +49,7 @@ ${question}`;
 
     return Response.json({ answer });
   } catch (error) {
+    console.error(error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
