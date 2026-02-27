@@ -6,15 +6,14 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export async function POST(request) {
   try {
-    const { question, userId, cookbookName } = await request.json();
+    const { question, userId } = await request.json();
 
     // Get embedding for the question
     const questionEmbedding = await getEmbedding(question);
-
-    // Search Supabase for most similar chunks
+    // Searching through Supabase for most similar chunks
     const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SECRET_KEY
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SECRET_KEY
     );
 
     const { data: relevantChunks, error } = await supabase.rpc(
@@ -22,7 +21,6 @@ export async function POST(request) {
       {
         query_embedding: questionEmbedding,
         match_user_id: userId,
-        match_cookbook_name: cookbookName,
         match_count: 5,
       }
     );
@@ -30,9 +28,12 @@ export async function POST(request) {
     if (error) throw error;
 
     // Build context from relevant chunks
+    //Added cookbook name to be able to tell user which pdf the recipe came from -future use case
     const context = relevantChunks
-      .map((chunk) => chunk.chunk_text)
+      .map((chunk) => `[From: ${chunk.cookbook_name}]\n${chunk.chunk_text}`)
       .join("\n\n");
+
+    const booksUsed = [...new Set(relevantChunks.map((c) => c.cookbook_name))];
 
     // Send to Gemini
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -47,7 +48,7 @@ ${question}`;
     const result = await model.generateContent(prompt);
     const answer = result.response.text();
 
-    return Response.json({ answer });
+    return Response.json({ answer,booksUsed});
   } catch (error) {
     console.error(error);
     return Response.json({ error: error.message }, { status: 500 });
