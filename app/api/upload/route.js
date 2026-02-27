@@ -45,6 +45,7 @@ export async function POST(request) {
     );
     const rows = chunks.map((chunk, i) => ({
       user_id: userId,
+      cookbook_name: cookbookName,
       chunk_text: chunk,
       embedding: embeddings[i],
       chunk_index: i,
