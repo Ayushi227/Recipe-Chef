@@ -1,12 +1,34 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+
 export default function Home() {
+  const [user, setUser] = useState(null);
   const [pdf, setPdf] = useState(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [pdfName, setPdfName] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check if user is logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.push("/login");
+      } else {
+        setUser(session.user);
+      }
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
 
   const handlePdfUpload = (e) => {
     const file = e.target.files[0];
@@ -14,13 +36,13 @@ export default function Home() {
       setPdf(file);
       setPdfName(file.name);
       setAnswer("");
+      setConversations([]);
     }
   };
 
   const handleAsk = async () => {
     if (!pdf || !question.trim()) return;
     setLoading(true);
-    setAnswer("");
 
     try {
       const formData = new FormData();
@@ -33,21 +55,43 @@ export default function Home() {
       });
 
       const data = await res.json();
-      setAnswer(data.answer || data.error);
+      const newConversation = { question, answer: data.answer || data.error };
+      setConversations((prev) => [...prev, newConversation]);
+      setQuestion("");
+
+      // Save to Supabase
+      if (user) {
+        await supabase.from("conversations").insert({
+          user_id: user.id,
+          cookbook_id: null,
+          question: newConversation.question,
+          answer: newConversation.answer,
+        });
+      }
     } catch (err) {
-      setAnswer("Something went wrong. Please try again.");
+      setConversations((prev) => [...prev, { question, answer: "Something went wrong." }]);
     } finally {
       setLoading(false);
     }
   };
 
+  if (!user) return null;
+
   return (
-    <main className="min-h-screen bg-amber-50 flex flex-col items-center justify-center p-8">
+    <main className="min-h-screen bg-amber-50 flex flex-col items-center p-8">
       <div className="max-w-2xl w-full">
         {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-5xl font-bold text-amber-800 mb-2">👨‍🍳 Recipe Chef</h1>
-          <p className="text-amber-600 text-lg">Upload your cookbook and ask me anything!</p>
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold text-amber-800">👨‍🍳 Recipe Chef</h1>
+            <p className="text-amber-600 text-sm mt-1">Welcome, {user.email}!</p>
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="text-sm text-amber-600 hover:text-amber-800 border border-amber-300 px-4 py-2 rounded-xl transition-colors"
+          >
+            Sign out
+          </button>
         </div>
 
         {/* Upload Area */}
@@ -66,8 +110,23 @@ export default function Home() {
           )}
         </div>
 
+        {/* Conversation History */}
+        {conversations.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-md p-6 mb-6 space-y-6">
+            {conversations.map((conv, i) => (
+              <div key={i}>
+                <p className="text-amber-800 font-semibold mb-1">🤔 {conv.question}</p>
+                <ReactMarkdown>
+                  {conv.answer}
+                </ReactMarkdown>
+                {i < conversations.length - 1 && <hr className="mt-4 border-amber-100" />}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Question Input */}
-        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-md p-6">
           <label className="block text-amber-800 font-semibold mb-3">
             🤔 What would you like to know?
           </label>
@@ -87,16 +146,6 @@ export default function Home() {
             {loading ? "Cooking up an answer... 🍳" : "Ask the Chef!"}
           </button>
         </div>
-
-        {/* Answer */}
-        {answer && (
-          <div className="bg-white rounded-2xl shadow-md p-6">
-            <h2 className="text-amber-800 font-semibold mb-3">👨‍🍳 Chef says:</h2>
-            {/* <ReactMarkdown className="prose prose-amber text-gray-700">{answer}</ReactMarkdown> */}
-
-            <ReactMarkdown>{answer}</ReactMarkdown>
-          </div>
-        )}
       </div>
     </main>
   );

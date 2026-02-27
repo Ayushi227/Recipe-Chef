@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.98.0",
     "multer": "^2.0.2",
     "next": "16.1.6",
     "pdf2json": "^4.0.2",
