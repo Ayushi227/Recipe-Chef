@@ -4,7 +4,14 @@ import PDFParser from "pdf2json";
 import { chunkText, embedChunks } from "@/lib/embeddings";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+export const config = {
+  api: {
+    bodyParser: false,
+    responseLimit: false,
+  },
+};
 
+export const maxDuration = 60; // 60 second timeout for large PDFs
 function extractTextFromPDF(buffer) {
   return new Promise((resolve, reject) => {
     const pdfParser = new PDFParser();
