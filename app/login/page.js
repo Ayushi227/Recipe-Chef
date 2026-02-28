@@ -11,6 +11,13 @@ export default function Login() {
     });
   };
 
+  const handleGuestLogin = async () => {
+    const { error } = await supabase.auth.signInAnonymously();
+    if (!error) {
+      window.location.href = "/";
+    }
+  };
+
   return (
     <main className="min-h-screen bg-amber-50 flex flex-col items-center justify-center p-8">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-md p-10 text-center">
@@ -19,7 +26,7 @@ export default function Login() {
 
         <button
           onClick={handleGoogleLogin}
-          className="w-full flex items-center justify-center gap-3 bg-white border-2 border-amber-200 hover:border-amber-400 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
+          className="w-full flex items-center justify-center gap-3 bg-white border-2 border-amber-200 hover:border-amber-400 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm mb-3"
         >
           <svg width="20" height="20" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -30,8 +37,24 @@ export default function Login() {
           Continue with Google
         </button>
 
-        <p className="mt-6 text-sm text-gray-400">
-          Your cookbooks are saved privately to your account
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-400">or</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleGuestLogin}
+          className="w-full bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold py-3 px-6 rounded-xl transition-colors border border-amber-200"
+        >
+          Continue as Guest 👤
+        </button>
+
+        <p className="mt-6 text-xs text-gray-400">
+          Guest data is temporary and won't be saved between sessions
         </p>
       </div>
     </main>

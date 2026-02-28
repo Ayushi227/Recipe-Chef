@@ -6,8 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export async function POST(request) {
   try {
-    const { question, userId } = await request.json();
-
+const { question, userId, dietaryRestrictions } = await request.json();
     // Get embedding for the question
     const questionEmbedding = await getEmbedding(question);
     // Searching through Supabase for most similar chunks
@@ -37,7 +36,13 @@ export async function POST(request) {
 
     // Send to Gemini
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const prompt = `You are a helpful chef assistant. Using ONLY the recipes in the cookbook below, answer the user's question. If the answer isn't in the cookbook, say so.
+const dietaryNote = dietaryRestrictions?.length > 0
+  ? `IMPORTANT: The user has these dietary restrictions: ${dietaryRestrictions.join(", ")}. Always respect these and flag any conflicts.`
+  : "";
+
+const prompt = `You are a helpful chef assistant. Using ONLY the cookbook sections below, answer the user's question. If the answer isn't in the provided sections, say so.
+
+${dietaryNote}
 
 RELEVANT COOKBOOK SECTIONS:
 ${context}
